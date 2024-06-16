@@ -411,7 +411,7 @@ public class Whatsapp {
      */
     public CompletableFuture<? extends MessageInfo> sendReaction(MessageInfo message, String reaction) {
         var key = new ChatMessageKeyBuilder()
-                .id(ChatMessageKey.randomId())
+                .id(ChatMessageKey.randomIdV2(message.senderJid(), store().clientType()))
                 .chatJid(message.parentJid())
                 .senderJid(message.senderJid())
                 .fromMe(Objects.equals(message.senderJid().toSimpleJid(), jidOrThrowError().toSimpleJid()))
@@ -571,7 +571,7 @@ public class Whatsapp {
                 .deviceListMetadataVersion(2)
                 .build();
         var key = new ChatMessageKeyBuilder()
-                .id(ChatMessageKey.randomId())
+                .id(ChatMessageKey.randomIdV2(jidOrThrowError(), store().clientType()))
                 .chatJid(recipient.toJid())
                 .fromMe(true)
                 .senderJid(jidOrThrowError())
@@ -685,7 +685,7 @@ public class Whatsapp {
                 .deviceListMetadataVersion(2)
                 .build();
         var key = new ChatMessageKeyBuilder()
-                .id(ChatMessageKey.randomId())
+                .id(ChatMessageKey.randomIdV2(jidOrThrowError(), store().clientType()))
                 .chatJid(Jid.of("status@broadcast"))
                 .fromMe(true)
                 .senderJid(jidOrThrowError())
@@ -1728,7 +1728,7 @@ public class Whatsapp {
                     .build();
             var sender = messageInfo.chatJid().hasServer(JidServer.GROUP) ? jidOrThrowError() : null;
             var key = new ChatMessageKeyBuilder()
-                    .id(ChatMessageKey.randomId())
+                    .id(ChatMessageKey.randomIdV2(sender, store().clientType()))
                     .chatJid(messageInfo.chatJid())
                     .fromMe(true)
                     .senderJid(sender)

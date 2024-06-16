@@ -715,13 +715,16 @@ public class SocketHandler implements SocketListener {
         if (messages.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
+        
+        jid = jid.withAgent(null);
+        participant = participant.withAgent(null);
 
         var attributes = Attributes.of()
                 .put("id", messages.getFirst())
                 .put("t", Clock.nowMilliseconds(), () -> Objects.equals(type, "read") || Objects.equals(type, "read-self"))
                 .put("to", jid)
                 .put("type", type, Objects::nonNull);
-        if (Objects.equals(type, "sender")) {
+        if (type == null || Objects.equals(type, "sender")) {
             if (jid.hasServer(JidServer.WHATSAPP))  {
                 attributes.put("recipient", jid);
                 attributes.put("to", participant);

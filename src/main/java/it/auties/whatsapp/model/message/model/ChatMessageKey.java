@@ -69,7 +69,7 @@ public final class ChatMessageKey implements ProtobufMessage {
      */
 
     public static String randomIdV2(Jid jid, ClientType... clientType) {
-        var type = Objects.requireNonNullElse(clientType[0], ClientType.WEB);
+        var type = clientType.length == 0 ? ClientType.WEB : clientType[0];
         return switch (type) {
             case ClientType.WEB -> randomWebKeyId(jid);
             case ClientType.MOBILE -> randomMobileKeyId(jid);
@@ -91,7 +91,7 @@ public final class ChatMessageKey implements ProtobufMessage {
             byte[] hash = digest.digest(buffer.array());
             byte[] truncatedHash = new byte[9];
             System.arraycopy(hash, 0, truncatedHash, 0, 9);
-            return "3EB0" + HexFormat.of().formatHex(truncatedHash);
+            return "3EB0" + HexFormat.of().formatHex(truncatedHash).toUpperCase();
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException(e);
         }

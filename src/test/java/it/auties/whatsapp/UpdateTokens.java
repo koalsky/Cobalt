@@ -1,5 +1,6 @@
 package it.auties.whatsapp;
 
+import com.beust.jcommander.internal.Lists;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.json.JsonReadFeature;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -18,6 +19,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -52,8 +54,32 @@ public class UpdateTokens {
                 .header("Sec-Fetch-Mode", "no-cors")
                 .header("Sec-Fetch-Dest", "empty")
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36")
+                //.header("User-Agent", getUserAgent())
                 .GET()
                 .build();
+    }
+
+    /**
+     * 获取用户代理
+     */
+    private static String getUserAgent() {
+        List<String> agentList = Lists.newArrayList("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36");
+        //根据元素的位置，得到权重，来随机得到一个UA，权重越大，越有可能被选中
+        return agentList.get(ThreadLocalRandom.current().nextInt(agentList.size()));
     }
 
     private static Path findTokensFile() {
@@ -74,29 +100,30 @@ public class UpdateTokens {
     }
 
     private static String getAbPropsList(String source) {
-       try {
-           var props = findResult(source, PROPS_REGEX) + "]";
-           var json = '{' + props.replaceAll("!0", "true").replaceAll("!1", "false") + '}';
-           return new ObjectMapper().enable(JsonParser.Feature.ALLOW_UNQUOTED_FIELD_NAMES)
-                   .enable(JsonParser.Feature.ALLOW_SINGLE_QUOTES)
-                   .reader()
-                   .forType(new TypeReference<Map<String, List<Object>>>() {})
-                   .with(JsonReadFeature.ALLOW_LEADING_DECIMAL_POINT_FOR_NUMBERS)
-                   .<Map<String, List<Object>>>readValue(json)
-                   .entrySet()
-                   .stream()
-                   .map(entry -> {
-                       var code = entry.getValue().get(0);
-                       var type = entry.getValue().get(1);
-                       var on = parseValue(entry.getValue().get(2), type);
-                       var off = parseValue(entry.getValue().get(3), type);
-                       var value =  "new BinaryProperty(\"%s\", %s, %s, %s)".formatted(entry.getKey(), code, on, off);
-                       return "        properties.put(%s, %s);".formatted((int) Double.parseDouble(code.toString()), value);
-                   })
-                   .collect(Collectors.joining("\n"));
-       }catch (IOException exception) {
-           throw new UncheckedIOException("Cannot read json", exception);
-       }
+        try {
+            var props = findResult(source, PROPS_REGEX) + "]";
+            var json = '{' + props.replaceAll("!0", "true").replaceAll("!1", "false") + '}';
+            return new ObjectMapper().enable(JsonParser.Feature.ALLOW_UNQUOTED_FIELD_NAMES)
+                    .enable(JsonParser.Feature.ALLOW_SINGLE_QUOTES)
+                    .reader()
+                    .forType(new TypeReference<Map<String, List<Object>>>() {
+                    })
+                    .with(JsonReadFeature.ALLOW_LEADING_DECIMAL_POINT_FOR_NUMBERS)
+                    .<Map<String, List<Object>>>readValue(json)
+                    .entrySet()
+                    .stream()
+                    .map(entry -> {
+                        var code = entry.getValue().get(0);
+                        var type = entry.getValue().get(1);
+                        var on = parseValue(entry.getValue().get(2), type);
+                        var off = parseValue(entry.getValue().get(3), type);
+                        var value = "new BinaryProperty(\"%s\", %s, %s, %s)".formatted(entry.getKey(), code, on, off);
+                        return "        properties.put(%s, %s);".formatted((int) Double.parseDouble(code.toString()), value);
+                    })
+                    .collect(Collectors.joining("\n"));
+        } catch (IOException exception) {
+            throw new UncheckedIOException("Cannot read json", exception);
+        }
     }
 
     private static Object parseValue(Object value, Object type) {
@@ -105,7 +132,7 @@ public class UpdateTokens {
         }
 
         var string = value.toString();
-        if(string.contains("\"")) {
+        if (string.contains("\"")) {
             return "\"\"\"\n%s\"\"\"".formatted(string);
         }
 

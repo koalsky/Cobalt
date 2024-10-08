@@ -320,6 +320,15 @@ public interface Listener {
     /**
      * Called when a new message is received in a chat
      *
+     * @param whatsapp an instance to the calling api
+     * @param info     the message that was sent
+     */
+    default void onNewMessage(Whatsapp whatsapp, MessageInfo info,Node node) {
+    }
+
+    /**
+     * Called when a new message is received in a chat
+     *
      * @param info the message that was sent
      */
     default void onNewMessage(MessageInfo info) {

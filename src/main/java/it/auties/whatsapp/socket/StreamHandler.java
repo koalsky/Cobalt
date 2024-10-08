@@ -1,5 +1,7 @@
 package it.auties.whatsapp.socket;
 
+
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import it.auties.curve25519.Curve25519;
 import it.auties.whatsapp.api.*;
@@ -112,7 +114,7 @@ class StreamHandler {
     }
 
     private void digestStreamEnd() {
-        if(socketHandler.state() == SocketState.CONNECTED) {
+        if (socketHandler.state() == SocketState.CONNECTED) {
             socketHandler.disconnect(DisconnectReason.RECONNECTING);
         }
     }
@@ -258,8 +260,7 @@ class StreamHandler {
 
     private CallStatus getCallStatus(Node node) {
         return switch (node.description()) {
-            case "terminate" ->
-                    node.attributes().hasValue("reason", "timeout") ? CallStatus.TIMED_OUT : CallStatus.REJECTED;
+            case "terminate" -> node.attributes().hasValue("reason", "timeout") ? CallStatus.TIMED_OUT : CallStatus.REJECTED;
             case "reject" -> CallStatus.REJECTED;
             case "accept" -> CallStatus.ACCEPTED;
             default -> CallStatus.RINGING;
@@ -469,7 +470,7 @@ class StreamHandler {
         var joinJson = NewsletterResponse.ofJson(joinPayload)
                 .orElseThrow(() -> new NoSuchElementException("Malformed join payload"));
         socketHandler.store().addNewsletter(joinJson.newsletter());
-        if(!socketHandler.store().historyLength().isZero()) {
+        if (!socketHandler.store().historyLength().isZero()) {
             socketHandler.queryNewsletterMessages(joinJson.newsletter().jid(), DEFAULT_NEWSLETTER_MESSAGES);
         }
     }
@@ -603,15 +604,27 @@ class StreamHandler {
     }
 
     private void addMessageForGroupStubType(Chat chat, ChatMessageInfo.StubType stubType, long timestamp, Node metadata) {
-        var participantJid = metadata.attributes()
-                .getOptionalJid("participant")
-                .orElse(null);
-        var parameters = getStubTypeParameters(metadata);
+        var participantJid = metadata.attributes().getOptionalJid("participant").orElse(null);
+        var parameters = new ArrayList<>(getStubTypeParameters(metadata));
         var key = new ChatMessageKeyBuilder()
                 .id(ChatMessageKey.randomId())
                 .chatJid(chat.jid())
                 .senderJid(participantJid)
                 .build();
+        //添加成员号码
+        List<Jid> memberJidList = getGroupMemberJidList(metadata);
+        //参数处理
+        List<String> receiverJidList = new ArrayList<>();
+        Jid receiverJid = null;
+        if (memberJidList != null && !memberJidList.isEmpty()) {
+            if (memberJidList.size() == 1) {
+                receiverJid = memberJidList.getFirst();
+                parameters.add(parameters.size(), "{\"receiverJid\" : \"" + receiverJid + "\"}");
+            } else {
+                parameters.add(parameters.size(), "{\"receiverJid\" : \"" + memberJidList.stream().map(Jid::toString).collect(Collectors.joining(",")) + "\"}");
+            }
+            receiverJidList.addAll(memberJidList.stream().map(Jid::toString).toList());
+        }
         var message = new ChatMessageInfoBuilder()
                 .status(MessageStatus.PENDING)
                 .timestampSeconds(timestamp)
@@ -620,24 +633,82 @@ class StreamHandler {
                 .stubType(stubType)
                 .stubParameters(parameters)
                 .senderJid(participantJid)
+                .receiverJid(receiverJid)
+                .receiverJidList(receiverJidList)
                 .build();
         chat.addNewMessage(message);
         socketHandler.onNewMessage(message);
-        if (participantJid == null) {
+        if (null == participantJid) {
             return;
         }
-
         handleGroupStubType(chat, stubType, participantJid);
+    }
+
+    /**
+     * 获取参与者JID
+     */
+    private static List<Jid> getGroupMemberJidList(Node metadata) {
+        if (null == metadata || metadata.attributes().getOptionalJid("participant").isEmpty()) {
+            return null;
+        }
+        ObjectMapper objectMapper = new ObjectMapper();
+        List<Jid> jidList = new ArrayList<>();
+        try {
+            JsonNode rootNode = objectMapper.readTree(metadata.toJson());
+            JsonNode content = rootNode.path("content");
+            if (content.isEmpty()) {
+                return null;
+                //throw new RuntimeException("Node中content集合数据为空");
+            }
+            JsonNode contentNode = content.get(0);
+            if (null == contentNode) {
+                return null;
+                //throw new RuntimeException("Node中content单条数据为空");
+            }
+            JsonNode innerContent = contentNode.path("content");
+            if (null == innerContent) {
+                return null;
+                //throw new RuntimeException("Node中内部的content集合数据为空");
+            }
+            for (JsonNode node : innerContent) {
+                if (null == node) {
+                    continue;
+                    //throw new RuntimeException("Node中内部的content单条数据为空");
+                }
+                JsonNode attributesNode = node.path("attributes");
+                if (null == attributesNode) {
+                    continue;
+                    //throw new RuntimeException("Node中内部的content-->attributes数据为空");
+                }
+                jidList.add(Jid.of(attributesNode.path("jid").asText()));
+            }
+//单联系人版本
+//            JsonNode innerContentNode = innerContent.get(0);
+//            if (null == innerContentNode) {
+//                return null;
+//                //throw new RuntimeException("Node中内部的content单条数据为空");
+//            }
+//            JsonNode attributesNode = innerContentNode.path("attributes");
+//            if (null == attributesNode) {
+//                return null;
+//                //throw new RuntimeException("Node中内部的content-->attributes数据为空");
+//            }
+//            return Jid.of(attributesNode.path("jid").asText());
+        } catch (IOException e) {
+            //throw new RuntimeException("Node中jid数据为空");
+            return null;
+        }
+        return jidList;
     }
 
     private void handleGroupStubType(Chat chat, ChatMessageInfo.StubType stubType, Jid participantJid) {
         switch (stubType) {
             case GROUP_PARTICIPANT_ADD -> chat.addParticipant(participantJid, GroupRole.USER);
+            case GROUP_PARTICIPANT_CREATED -> chat.createdParticipant(participantJid);
+            case GROUP_PARTICIPANT_REVOKED -> chat.revokedParticipant(participantJid);
             case GROUP_PARTICIPANT_REMOVE, GROUP_PARTICIPANT_LEAVE -> chat.removeParticipant(participantJid);
-            case GROUP_PARTICIPANT_PROMOTE ->
-                    chat.findParticipant(participantJid).ifPresent(participant -> participant.setRole(GroupRole.ADMIN));
-            case GROUP_PARTICIPANT_DEMOTE ->
-                    chat.findParticipant(participantJid).ifPresent(participant -> participant.setRole(GroupRole.USER));
+            case GROUP_PARTICIPANT_PROMOTE -> chat.findParticipant(participantJid).ifPresent(participant -> participant.setRole(GroupRole.ADMIN));
+            case GROUP_PARTICIPANT_DEMOTE -> chat.findParticipant(participantJid).ifPresent(participant -> participant.setRole(GroupRole.USER));
         }
     }
 
@@ -747,13 +818,13 @@ class StreamHandler {
     private CompletableFuture<Void> addPrivacySetting(Node node, boolean update) {
         var privacySettingName = node.attributes().getString("name");
         var privacyType = PrivacySettingType.of(privacySettingName);
-        if(privacyType.isEmpty()) {
+        if (privacyType.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
 
         var privacyValueName = node.attributes().getString("value");
         var privacyValue = PrivacySettingValue.of(privacyValueName);
-        if(privacyValue.isEmpty()) {
+        if (privacyValue.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
 
@@ -810,7 +881,7 @@ class StreamHandler {
     }
 
     private void handleServerSyncNotification(Node node) {
-        if(!socketHandler.keys().initialAppSync()) {
+        if (!socketHandler.keys().initialAppSync()) {
             return;
         }
 
@@ -838,7 +909,7 @@ class StreamHandler {
     }
 
     private void digestError(Node node) {
-        if(node.hasNode("conflict")) {
+        if (node.hasNode("conflict")) {
             socketHandler.disconnect(DisconnectReason.RECONNECTING);
             return;
         }
@@ -897,7 +968,7 @@ class StreamHandler {
                 onInitialInfo();
                 notifyChatsAndNewsletters(true);
             }).exceptionallyAsync(throwable -> socketHandler.handleFailure(LOGIN, throwable));
-        }else {
+        } else {
             loggedInFuture.thenRunAsync(this::onInitialInfo);
         }
 
@@ -982,13 +1053,13 @@ class StreamHandler {
     private void onRegistration() {
         socketHandler.store().serialize(true);
         socketHandler.keys().serialize(true);
-        if(socketHandler.store().clientType() == ClientType.MOBILE) {
+        if (socketHandler.store().clientType() == ClientType.MOBILE) {
             socketHandler.keys().setInitialAppSync(true);
         }
     }
 
     private void notifyChatsAndNewsletters(boolean notify) {
-        if(!notify) {
+        if (!notify) {
             return;
         }
 
@@ -1006,7 +1077,7 @@ class StreamHandler {
     private void parseNewsletters(Node result) {
         var newslettersPayload = result.findNode("result")
                 .flatMap(Node::contentAsString);
-        if(newslettersPayload.isEmpty()) {
+        if (newslettersPayload.isEmpty()) {
             return;
         }
 
@@ -1022,12 +1093,12 @@ class StreamHandler {
         for (var index = 0; index < data.size(); index++) {
             var newsletter = data.get(index);
             socketHandler.store().addNewsletter(newsletter);
-            if(!noMessages) {
+            if (!noMessages) {
                 futures[index] = socketHandler.queryNewsletterMessages(newsletter, DEFAULT_NEWSLETTER_MESSAGES);
             }
         }
 
-        if(noMessages) {
+        if (noMessages) {
             socketHandler.onNewsletters();
             return;
         }
@@ -1194,7 +1265,7 @@ class StreamHandler {
 
     private CompletableFuture<Void> updateSelfPresence() {
         if (!socketHandler.store().automaticPresenceUpdates()) {
-            if(!socketHandler.store().online()) {  // Just to be sure
+            if (!socketHandler.store().online()) {  // Just to be sure
                 socketHandler.sendNodeWithNoResponse(Node.of("presence", Map.of("name", socketHandler.store().name(), "type", "unavailable")));
             }
             return CompletableFuture.completedFuture(null);
@@ -1332,11 +1403,11 @@ class StreamHandler {
         var result = new MediaConnection(auth, ttl, maxBuckets, timestamp, hosts);
         var alreadyScheduled = socketHandler.store().hasMediaConnection();
         socketHandler.store().setMediaConnection(result);
-        if(alreadyScheduled) {
+        if (alreadyScheduled) {
             return;
         }
 
-       this.mediaConnectionFuture = socketHandler.scheduleAtFixedInterval(() -> scheduleMediaConnectionUpdate(0, null), result.ttl(), result.ttl());
+        this.mediaConnectionFuture = socketHandler.scheduleAtFixedInterval(() -> scheduleMediaConnectionUpdate(0, null), result.ttl(), result.ttl());
     }
 
     private void digestIq(Node node) {
@@ -1344,7 +1415,7 @@ class StreamHandler {
             socketHandler.sendQueryWithNoResponse("result", null);
             return;
         }
-        
+
         var container = node.findNode().orElse(null);
         if (container == null) {
             return;
@@ -1519,15 +1590,15 @@ class StreamHandler {
     }
 
     protected void dispose() {
-        if(mediaConnectionFuture != null && !mediaConnectionFuture.isDone()) {
+        if (mediaConnectionFuture != null && !mediaConnectionFuture.isDone()) {
             mediaConnectionFuture.cancel(true);
         }
 
-        if(pingFuture != null) {
+        if (pingFuture != null) {
             pingFuture.cancel(true);
         }
 
-        if(mediaConnectionFuture != null) {
+        if (mediaConnectionFuture != null) {
             mediaConnectionFuture.cancel(true);
         }
 

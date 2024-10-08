@@ -155,9 +155,9 @@ public class Whatsapp {
             var clazz = Class.forName(RegisterListenerProcessor.qualifiedClassName());
             var method = clazz.getMethod(RegisterListenerProcessor.methodName(), Whatsapp.class);
             method.invoke(null, this);
-        }catch (ClassNotFoundException exception) {
+        } catch (ClassNotFoundException exception) {
             // Ignored, this can happen if the compilation environment didn't register the processor
-        }catch (ReflectiveOperationException exception) {
+        } catch (ReflectiveOperationException exception) {
             throw new RuntimeException("Cannot register listeners automatically", exception);
         }
     }
@@ -208,7 +208,7 @@ public class Whatsapp {
     public void awaitDisconnection() {
         var future = new CompletableFuture<Void>();
         addDisconnectedListener((reason) -> {
-            if(reason != DisconnectReason.RECONNECTING && reason != DisconnectReason.RESTORE) {
+            if (reason != DisconnectReason.RECONNECTING && reason != DisconnectReason.RESTORE) {
                 future.complete(null);
             }
         });
@@ -274,7 +274,8 @@ public class Whatsapp {
         var metadata = Map.of("jid", jidOrThrowError(), "reason", "user_initiated");
         var device = Node.of("remove-companion-device", metadata);
         return socketHandler.sendQuery("set", "md", device)
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
     /**
@@ -330,7 +331,8 @@ public class Whatsapp {
      */
     public CompletableFuture<Void> createGdprAccountInfo() {
         return socketHandler.sendQuery("get", "urn:xmpp:whatsapp:account", Node.of("gdpr", Map.of("gdpr", "request")))
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
     /**
@@ -708,7 +710,7 @@ public class Whatsapp {
      * @return a CompletableFuture
      */
     public CompletableFuture<ChatMessageInfo> sendMessage(ChatMessageInfo info) {
-        if(store().clientType() == ClientType.MOBILE) {
+        if (store().clientType() == ClientType.MOBILE) {
             throw new IllegalStateException("The mobile API cannot send messages or the account will be banned, if you need to send messages please contact me on Telegram @Auties00");
         }
 
@@ -723,7 +725,7 @@ public class Whatsapp {
      * @return a CompletableFuture
      */
     public CompletableFuture<NewsletterMessageInfo> sendMessage(NewsletterMessageInfo info) {
-        if(store().clientType() == ClientType.MOBILE) {
+        if (store().clientType() == ClientType.MOBILE) {
             throw new IllegalStateException("The mobile API cannot send messages or the account will be banned, if you need to send messages please contact me on Telegram @Auties00");
         }
 
@@ -989,7 +991,8 @@ public class Whatsapp {
      */
     public CompletableFuture<Void> revokeGroupInvite(JidProvider chat) {
         return socketHandler.sendQuery(chat.toJid(), "set", "w:g2", Node.of("invite"))
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
     /**
@@ -1122,6 +1125,36 @@ public class Whatsapp {
         return executeActionOnGroupParticipant(group, GroupAction.REMOVE, contacts);
     }
 
+    /**
+     * 批准小组参与者
+     */
+    public CompletableFuture<List<Jid>> approveGroupParticipant(JidProvider group, JidProvider... contacts) {
+        return executeMembershipRequestsAction(group, GroupAction.APPROVE, contacts);
+    }
+
+    /**
+     * 拒绝小组参与者
+     */
+    public CompletableFuture<List<Jid>> rejectGroupParticipant(JidProvider group, JidProvider... contacts) {
+        return executeMembershipRequestsAction(group, GroupAction.REJECT, contacts);
+    }
+
+    /**
+     * 成员资格请求操作
+     */
+    private CompletableFuture<List<Jid>> executeMembershipRequestsAction(JidProvider group, GroupAction action, JidProvider... jids) {
+        //组装JSON节点
+        List<Node> nodes = Arrays.stream(jids).map(JidProvider::toJid).map(jid -> {
+            Node participantNode = Node.of("participant", Map.of("jid", checkGroupParticipantJid(jid, "Cannot execute action on yourself")));
+            return Node.of(action.data(), Map.of(), List.of(participantNode));
+        }).toList();
+        //组装最外节点
+        Node[] body = {Node.of(GroupAction.MEMBERSHIP_REQUESTS_ACTION.data(), Map.of(), nodes)};
+        //发送消息
+        return socketHandler.sendQuery(group.toJid(), "set", "w:g2", body).thenApplyAsync(result -> parseGroupActionResponse(result, group, action));
+    }
+
+
     private CompletableFuture<List<Jid>> executeActionOnGroupParticipant(JidProvider group, GroupAction action, JidProvider... jids) {
         var body = Arrays.stream(jids)
                 .map(JidProvider::toJid)
@@ -1153,15 +1186,22 @@ public class Whatsapp {
 
     private void handleGroupAction(GroupAction action, Chat chat, Jid entry) {
         switch (action) {
-            case ADD -> chat.addParticipant(entry, GroupRole.USER);
+            case ADD -> {
+                chat.addParticipant(entry, GroupRole.USER);
+                chat.addParticipant(entry, GroupRole.ADMIN);
+            }
             case REMOVE -> {
                 chat.removeParticipant(entry);
                 chat.addPastParticipant(new GroupPastParticipant(entry, GroupPastParticipant.Reason.REMOVED, Clock.nowSeconds()));
             }
-            case PROMOTE -> chat.findParticipant(entry)
-                    .ifPresent(participant -> participant.setRole(GroupRole.ADMIN));
-            case DEMOTE -> chat.findParticipant(entry)
-                    .ifPresent(participant -> participant.setRole(GroupRole.USER));
+            case PROMOTE -> chat.findParticipant(entry).ifPresent(participant -> participant.setRole(GroupRole.ADMIN));
+            case DEMOTE -> chat.findParticipant(entry).ifPresent(participant -> participant.setRole(GroupRole.USER));
+           // case APPROVE -> chat.addPastParticipant(new GroupPastParticipant(entry, GroupPastParticipant.Reason.LEFT, Clock.nowSeconds()));
+           //  case REJECT -> chat.removeParticipant(entry);
+            //成员资格请求操作
+            case MEMBERSHIP_REQUESTS_ACTION -> {
+                //chat.addPastParticipant(new GroupPastParticipant(entry, GroupPastParticipant.Reason.REMOVED, Clock.nowSeconds()));
+            }
         }
     }
 
@@ -1176,7 +1216,8 @@ public class Whatsapp {
     public CompletableFuture<Void> changeGroupSubject(JidProvider group, String newName) {
         var body = Node.of("subject", newName.getBytes(StandardCharsets.UTF_8));
         return socketHandler.sendQuery(group.toJid(), "set", "w:g2", body)
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
     /**
@@ -1190,7 +1231,8 @@ public class Whatsapp {
         return socketHandler.queryGroupMetadata(group.toJid())
                 .thenApplyAsync(GroupMetadata::descriptionId)
                 .thenComposeAsync(descriptionId -> changeGroupDescription(group, description, descriptionId.orElse(null)))
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
     private CompletableFuture<Void> changeGroupDescription(JidProvider group, String description, String descriptionId) {
@@ -1230,13 +1272,12 @@ public class Whatsapp {
         var body = switch (setting) {
             case EDIT_GROUP_INFO -> Node.of(policy == ChatSettingPolicy.ADMINS ? "locked" : "unlocked");
             case SEND_MESSAGES -> Node.of(policy == ChatSettingPolicy.ADMINS ? "announcement" : "not_announcement");
-            case ADD_PARTICIPANTS ->
-                    Node.of("member_add_mode", policy == ChatSettingPolicy.ADMINS ? "admin_add".getBytes(StandardCharsets.UTF_8) : "all_member_add".getBytes(StandardCharsets.UTF_8));
-            case APPROVE_PARTICIPANTS ->
-                    Node.of("membership_approval_mode", Node.of("group_join", Map.of("state", policy == ChatSettingPolicy.ADMINS ? "on" : "off")));
+            case ADD_PARTICIPANTS -> Node.of("member_add_mode", policy == ChatSettingPolicy.ADMINS ? "admin_add".getBytes(StandardCharsets.UTF_8) : "all_member_add".getBytes(StandardCharsets.UTF_8));
+            case APPROVE_PARTICIPANTS -> Node.of("membership_approval_mode", Node.of("group_join", Map.of("state", policy == ChatSettingPolicy.ADMINS ? "on" : "off")));
         };
         return socketHandler.sendQuery(group.toJid(), "set", "w:g2", body)
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
     /**
@@ -1272,7 +1313,8 @@ public class Whatsapp {
         var profilePic = image != null ? Medias.getProfilePic(image) : null;
         var body = Node.of("picture", Map.of("type", "image"), profilePic);
         return socketHandler.sendQuery(group.toJid().toSimpleJid(), "set", "w:profile:picture", body)
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
     /**
@@ -1322,7 +1364,7 @@ public class Whatsapp {
     public CompletableFuture<Optional<GroupMetadata>> createGroup(String subject, ChatEphemeralTimer timer, JidProvider parentCommunity, JidProvider... contacts) {
         var timestamp = Clock.nowSeconds();
         Validate.isTrue(!subject.isBlank(), "The subject of a group cannot be blank");
-        Validate.isTrue( parentCommunity != null || contacts.length >= 1, "Expected at least 1 member for this group");
+        Validate.isTrue(parentCommunity != null || contacts.length >= 1, "Expected at least 1 member for this group");
         var children = new ArrayList<Node>();
         if (parentCommunity != null) {
             children.add(Node.of("linked_parent", Map.of("jid", parentCommunity.toJid())));
@@ -1509,7 +1551,8 @@ public class Whatsapp {
     public CompletableFuture<Void> blockContact(JidProvider contact) {
         var body = Node.of("item", Map.of("action", "block", "jid", contact.toJid()));
         return socketHandler.sendQuery("set", "blocklist", body)
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
     /**
@@ -1521,7 +1564,8 @@ public class Whatsapp {
     public CompletableFuture<Void> unblockContact(JidProvider contact) {
         var body = Node.of("item", Map.of("action", "unblock", "jid", contact.toJid()));
         return socketHandler.sendQuery("set", "blocklist", body)
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
     /**
@@ -1549,8 +1593,7 @@ public class Whatsapp {
                         .thenRun(() -> {
                         });
             }
-            default ->
-                    throw new IllegalArgumentException("Unexpected chat %s: ephemeral messages are only supported for conversations and groups".formatted(chat.toJid()));
+            default -> throw new IllegalArgumentException("Unexpected chat %s: ephemeral messages are only supported for conversations and groups".formatted(chat.toJid()));
         };
     }
 
@@ -2181,11 +2224,11 @@ public class Whatsapp {
     public CompletableFuture<Void> changeCommunitySetting(JidProvider community, CommunitySetting setting, ChatSettingPolicy policy) {
         Validate.isTrue(community.toJid().hasServer(JidServer.GROUP), "This method only accepts communities");
         var body = switch (setting) {
-            case MODIFY_GROUPS ->
-                    Node.of(policy == ChatSettingPolicy.ANYONE ? "allow_non_admin_sub_group_creation" : "not_allow_non_admin_sub_group_creation");
+            case MODIFY_GROUPS -> Node.of(policy == ChatSettingPolicy.ANYONE ? "allow_non_admin_sub_group_creation" : "not_allow_non_admin_sub_group_creation");
         };
         return socketHandler.sendQuery(JidServer.GROUP.toJid(), "set", "w:g2", body)
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
 
@@ -2860,7 +2903,8 @@ public class Whatsapp {
         var body = new UpdateNewsletterRequest.Variable(newsletter.toJid(), payload);
         var request = new UpdateNewsletterRequest(body);
         return socketHandler.sendQuery("get", "w:mex", Node.of("query", Map.of("query_id", "7150902998257522"), Json.writeValueAsBytes(request)))
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
     /**
@@ -2873,7 +2917,8 @@ public class Whatsapp {
         var body = new JoinNewsletterRequest.Variable(newsletter.toJid());
         var request = new JoinNewsletterRequest(body);
         return socketHandler.sendQuery("get", "w:mex", Node.of("query", Map.of("query_id", "9926858900719341"), Json.writeValueAsBytes(request)))
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
     /**
@@ -2886,7 +2931,8 @@ public class Whatsapp {
         var body = new LeaveNewsletterRequest.Variable(newsletter.toJid());
         var request = new LeaveNewsletterRequest(body);
         return socketHandler.sendQuery("get", "w:mex", Node.of("query", Map.of("query_id", "6392786840836363"), Json.writeValueAsBytes(request)))
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
     /**
@@ -3024,12 +3070,12 @@ public class Whatsapp {
         return socketHandler.sendQuery("get", "w:mex", Node.of("query", Map.of("query_id", "7292354640794756"), Json.writeValueAsBytes(request)))
                 .thenApplyAsync(this::hasAcceptedNewsletterAdminInvite)
                 .thenComposeAsync(result -> {
-                    if(result.isEmpty()) {
+                    if (result.isEmpty()) {
                         return CompletableFuture.completedFuture(false);
                     }
 
                     return queryNewsletter(result.get(), NewsletterViewerRole.ADMIN).thenApplyAsync(newsletter -> {
-                        if(newsletter.isEmpty()) {
+                        if (newsletter.isEmpty()) {
                             return false;
                         }
 

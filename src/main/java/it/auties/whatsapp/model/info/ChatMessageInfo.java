@@ -41,6 +41,10 @@ public final class ChatMessageInfo implements MessageInfo, MessageStatusInfo<Cha
     private MessageStatus status;
     @ProtobufProperty(index = 5, type = ProtobufType.STRING)
     private final Jid senderJid;
+    @ProtobufProperty(index = 101, type = ProtobufType.STRING)
+    private final Jid receiverJid;
+    @ProtobufProperty(index = 102, type = ProtobufType.STRING)
+    private final List<String> receiverJidList;
     @ProtobufProperty(index = 6, type = ProtobufType.UINT64)
     private final long messageC2STimestamp;
     @ProtobufProperty(index = 16, type = ProtobufType.BOOL)
@@ -117,18 +121,21 @@ public final class ChatMessageInfo implements MessageInfo, MessageStatusInfo<Cha
     private final Jid originalSender;
     @ProtobufProperty(index = 52, type = ProtobufType.UINT64)
     private long revokeTimestampSeconds;
+
     @JsonBackReference
     private Chat chat;
 
     private Contact sender;
 
     @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
-    public ChatMessageInfo(ChatMessageKey key, MessageContainer message, long timestampSeconds, MessageStatus status, Jid senderJid, long messageC2STimestamp, boolean ignore, boolean starred, boolean broadcast, String pushName, byte[] mediaCiphertextSha256, boolean multicast, boolean urlText, boolean urlNumber, StubType stubType, boolean clearMedia, List<String> stubParameters, int duration, List<String> labels, PaymentInfo paymentInfo, LiveLocationMessage finalLiveLocation, PaymentInfo quotedPaymentInfo, long ephemeralStartTimestamp, int ephemeralDuration, boolean enableEphemeral, boolean ephemeralOutOfSync, BusinessPrivacyStatus businessPrivacyStatus, String businessVerifiedName, MediaData mediaData, PhotoChange photoChange, MessageReceipt receipt, List<ReactionMessage> reactions, MediaData quotedStickerData, byte[] futureProofData, PublicServiceAnnouncementStatus psaStatus, List<PollUpdate> pollUpdates, PollAdditionalMetadata pollAdditionalMetadata, String agentId, boolean statusAlreadyViewed, byte[] messageSecret, KeepInChat keepInChat, Jid originalSender, long revokeTimestampSeconds, Chat chat, Contact sender) {
+    public ChatMessageInfo(ChatMessageKey key, MessageContainer message, long timestampSeconds, MessageStatus status, Jid senderJid, Jid receiverJid, List<String> receiverJidList, long messageC2STimestamp, boolean ignore, boolean starred, boolean broadcast, String pushName, byte[] mediaCiphertextSha256, boolean multicast, boolean urlText, boolean urlNumber, StubType stubType, boolean clearMedia, List<String> stubParameters, int duration, List<String> labels, PaymentInfo paymentInfo, LiveLocationMessage finalLiveLocation, PaymentInfo quotedPaymentInfo, long ephemeralStartTimestamp, int ephemeralDuration, boolean enableEphemeral, boolean ephemeralOutOfSync, BusinessPrivacyStatus businessPrivacyStatus, String businessVerifiedName, MediaData mediaData, PhotoChange photoChange, MessageReceipt receipt, List<ReactionMessage> reactions, MediaData quotedStickerData, byte[] futureProofData, PublicServiceAnnouncementStatus psaStatus, List<PollUpdate> pollUpdates, PollAdditionalMetadata pollAdditionalMetadata, String agentId, boolean statusAlreadyViewed, byte[] messageSecret, KeepInChat keepInChat, Jid originalSender, long revokeTimestampSeconds, Chat chat, Contact sender) {
         this.key = key;
         this.message = message;
         this.timestampSeconds = timestampSeconds;
         this.status = status;
         this.senderJid = senderJid;
+        this.receiverJid = receiverJid;
+        this.receiverJidList = receiverJidList;
         this.messageC2STimestamp = messageC2STimestamp;
         this.ignore = ignore;
         this.starred = starred;
@@ -172,12 +179,14 @@ public final class ChatMessageInfo implements MessageInfo, MessageStatusInfo<Cha
     }
 
 
-    public ChatMessageInfo(ChatMessageKey key, MessageContainer message, long timestampSeconds, MessageStatus status, Jid senderJid, long messageC2STimestamp, boolean ignore, boolean starred, boolean broadcast, String pushName, byte[] mediaCiphertextSha256, boolean multicast, boolean urlText, boolean urlNumber, StubType stubType, boolean clearMedia, List<String> stubParameters, int duration, List<String> labels, PaymentInfo paymentInfo, LiveLocationMessage finalLiveLocation, PaymentInfo quotedPaymentInfo, long ephemeralStartTimestamp, int ephemeralDuration, boolean enableEphemeral, boolean ephemeralOutOfSync, BusinessPrivacyStatus businessPrivacyStatus, String businessVerifiedName, MediaData mediaData, PhotoChange photoChange, MessageReceipt receipt, List<ReactionMessage> reactions, MediaData quotedStickerData, byte[] futureProofData, PublicServiceAnnouncementStatus psaStatus, List<PollUpdate> pollUpdates, PollAdditionalMetadata pollAdditionalMetadata, String agentId, boolean statusAlreadyViewed, byte[] messageSecret, KeepInChat keepInChat, Jid originalSender, long revokeTimestampSeconds) {
+    public ChatMessageInfo(ChatMessageKey key, MessageContainer message, long timestampSeconds, MessageStatus status, Jid senderJid, Jid receiverJid, List<String> receiverJidList, long messageC2STimestamp, boolean ignore, boolean starred, boolean broadcast, String pushName, byte[] mediaCiphertextSha256, boolean multicast, boolean urlText, boolean urlNumber, StubType stubType, boolean clearMedia, List<String> stubParameters, int duration, List<String> labels, PaymentInfo paymentInfo, LiveLocationMessage finalLiveLocation, PaymentInfo quotedPaymentInfo, long ephemeralStartTimestamp, int ephemeralDuration, boolean enableEphemeral, boolean ephemeralOutOfSync, BusinessPrivacyStatus businessPrivacyStatus, String businessVerifiedName, MediaData mediaData, PhotoChange photoChange, MessageReceipt receipt, List<ReactionMessage> reactions, MediaData quotedStickerData, byte[] futureProofData, PublicServiceAnnouncementStatus psaStatus, List<PollUpdate> pollUpdates, PollAdditionalMetadata pollAdditionalMetadata, String agentId, boolean statusAlreadyViewed, byte[] messageSecret, KeepInChat keepInChat, Jid originalSender, long revokeTimestampSeconds) {
         this.key = key;
         this.message = Objects.requireNonNullElseGet(message, MessageContainer::empty);
         this.timestampSeconds = timestampSeconds;
         this.status = status;
         this.senderJid = senderJid;
+        this.receiverJid = receiverJid;
+        this.receiverJidList = receiverJidList;
         this.messageC2STimestamp = messageC2STimestamp;
         this.ignore = ignore;
         this.starred = starred;
@@ -315,6 +324,23 @@ public final class ChatMessageInfo implements MessageInfo, MessageStatusInfo<Cha
      */
     public Jid senderJid() {
         return requireNonNullElseGet(senderJid, () -> key.senderJid().orElseGet(key::chatJid));
+    }
+
+    public Jid receiverJid() {
+        //会提示：CompletionException: java.lang.NullPointerException: supplier  异常
+        //return requireNonNullElseGet(receiverJid, null);
+        //模拟senderJid的返回
+        //return requireNonNullElseGet(receiverJid, () -> key.senderJid().orElseGet(key::chatJid));
+        //自定义返回
+        return Optional.ofNullable(receiverJid).orElse(key.chatJid());
+
+    }
+
+    public List<String> receiverJidList() {
+        if (receiverJidList.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return receiverJidList;
     }
 
     @Override
@@ -711,7 +737,17 @@ public final class ChatMessageInfo implements MessageInfo, MessageStatusInfo<Cha
         COMMUNITY_PARENT_GROUP_SUBJECT_CHANGED(158, List.of("subject")),
         CAG_INVITE_AUTO_ADD(159, List.of("invite_auto_add")),
         BIZ_CHAT_ASSIGNMENT_UNASSIGN(160, List.of("chat_assignment_unassign")),
-        CAG_INVITE_AUTO_JOINED(161, List.of("invite_auto_add"));
+        CAG_INVITE_AUTO_JOINED(161, List.of("invite_auto_add")),
+        //群组权限 - [成员可以] - 添加其他成员（入群）
+        GROUP_MEMBER_ADD_MODE(171, List.of("member_add_mode")),
+        //已创建的成员资格请求(用户发起)
+        GROUP_PARTICIPANT_CREATED(301, List.of("created_membership_requests")),
+
+        //已撤销的成员资格请求(用户发起)
+        GROUP_PARTICIPANT_REVOKED(302, List.of("revoked_membership_requests")),
+        ;
+
+        //自定义
 
         final int index;
         private final List<String> symbols;

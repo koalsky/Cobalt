@@ -24,7 +24,16 @@ public enum GroupAction {
     /**
      * Demotes a contact to user in a group
      */
-    DEMOTE;
+    DEMOTE,
+
+    //成员资格请求操作
+    MEMBERSHIP_REQUESTS_ACTION,
+
+    //成员资格请求操作(批准)
+    APPROVE,
+
+    //成员资格请求操作(拒绝)
+    REJECT;
 
     /**
      * Returns the name of this enumerated constant

@@ -91,7 +91,7 @@ public final class Chat implements ProtobufMessage, JidProvider {
 
     @ProtobufProperty(index = 23, type = ProtobufType.BYTES)
     byte[] identityKey;
-    
+
     @ProtobufProperty(index = 24, type = ProtobufType.UINT32)
     int pinnedTimestampSeconds;
 
@@ -138,22 +138,22 @@ public final class Chat implements ProtobufMessage, JidProvider {
 
     @ProtobufProperty(index = 39, type = ProtobufType.STRING)
     Jid phoneJid;
-    
+
     @ProtobufProperty(index = 40, type = ProtobufType.BOOL)
     boolean shareOwnPhoneNumber;
-    
+
     @ProtobufProperty(index = 41, type = ProtobufType.BOOL)
     boolean pnhDuplicateLidThread;
-    
+
     @ProtobufProperty(index = 42, type = ProtobufType.STRING)
     Jid lidJid;
-    
+
     @ProtobufProperty(index = 999, type = ProtobufType.MAP, keyType = ProtobufType.STRING, valueType = ProtobufType.OBJECT)
     final ConcurrentHashMap<Jid, ContactStatus> presences;
-    
+
     @ProtobufProperty(index = 1000, type = ProtobufType.STRING)
     final Set<Jid> participantsPreKeys;
-    
+
     @ProtobufProperty(index = 1001, type = ProtobufType.OBJECT)
     final Set<GroupPastParticipant> pastParticipants;
 
@@ -204,7 +204,7 @@ public final class Chat implements ProtobufMessage, JidProvider {
         this.participantsPreKeys = participantsPreKeys;
         this.pastParticipants = pastParticipants;
     }
-    
+
     /**
      * Returns the name of this chat
      *
@@ -534,7 +534,7 @@ public final class Chat implements ProtobufMessage, JidProvider {
     }
 
     private void updateChatTimestamp(ChatMessageInfo info) {
-        if(info.timestampSeconds().isEmpty()) {
+        if (info.timestampSeconds().isEmpty()) {
             return;
         }
 
@@ -580,6 +580,38 @@ public final class Chat implements ProtobufMessage, JidProvider {
     }
 
     /**
+     * 已创建的成员资格请求(用户发起)
+     * GroupParticipant
+     */
+    public boolean createdParticipant(Jid jid) {
+        //System.err.println("createdParticipant:jid-->" + jid.toString());
+        // 原版本
+        // this.update = true;
+        var result = addParticipant(new GroupParticipant(jid, GroupRole.USER));
+        if (result) {
+            this.update = true;
+        }
+        return true;
+    }
+
+    /**
+     * 已撤销的成员资格请求(用户发起)
+     * GroupParticipant
+     */
+    public boolean revokedParticipant(Jid jid) {
+        //System.err.println("revokedParticipant:jid-->" + jid.toString());
+        // 原版本
+        // this.update = true;
+        //新版本
+        var result = participants.removeIf(entry -> Objects.equals(entry.jid(), jid));
+        if (result) {
+            this.update = true;
+        }
+        return true;
+    }
+
+
+    /**
      * Adds a participant to this chat
      *
      * @param jid  the non-null jid of the participant
@@ -618,7 +650,6 @@ public final class Chat implements ProtobufMessage, JidProvider {
         if (result) {
             this.update = true;
         }
-
         return result;
     }
 

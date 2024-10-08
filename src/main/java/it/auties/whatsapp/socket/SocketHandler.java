@@ -190,11 +190,11 @@ public class SocketHandler implements SocketListener {
         }
 
         var decipheredMessage = decipherMessage(message, readKey.get());
-        if(decipheredMessage == null) {
+        if (decipheredMessage == null) {
             return;
         }
 
-        try(var decoder = new BinaryDecoder(decipheredMessage)) {
+        try (var decoder = new BinaryDecoder(decipheredMessage)) {
             var node = decoder.decode();
             onNodeReceived(node);
             store.resolvePendingRequest(node, false);
@@ -215,7 +215,7 @@ public class SocketHandler implements SocketListener {
     private byte[] decipherMessage(byte[] message, byte[] readKey) {
         try {
             return AesGcm.decrypt(keys.nextReadCounter(true), message, readKey);
-        }  catch (Throwable throwable) {
+        } catch (Throwable throwable) {
             return null;
         }
     }
@@ -268,12 +268,14 @@ public class SocketHandler implements SocketListener {
 
     public CompletableFuture<Void> sendNodeWithNoResponse(Node node) {
         return sendRequest(SocketRequest.of(node, null), false, false)
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
     public CompletableFuture<Void> sendBinaryWithNoResponse(byte[] binary, boolean prologue) {
         return sendRequest(SocketRequest.of(binary), prologue, false)
-                .thenRun(() -> {});
+                .thenRun(() -> {
+                });
     }
 
     private CompletableFuture<Node> sendRequest(SocketRequest request, boolean prologue, boolean response) {
@@ -282,10 +284,10 @@ public class SocketHandler implements SocketListener {
         }
 
         var byteArrayOutputStream = new ByteArrayOutputStream();
-        try(var dataOutputStream = new DataOutputStream(byteArrayOutputStream)) {
+        try (var dataOutputStream = new DataOutputStream(byteArrayOutputStream)) {
             writeSemaphore.acquire();
             var ciphered = encryptRequest(request);
-            if(prologue) {
+            if (prologue) {
                 dataOutputStream.write(switch (store.clientType()) {
                     case WEB -> Specification.Whatsapp.WEB_PROLOGUE;
                     case MOBILE -> Specification.Whatsapp.MOBILE_PROLOGUE;
@@ -296,12 +298,12 @@ public class SocketHandler implements SocketListener {
             dataOutputStream.write(ciphered);
             session.sendBinary(byteArrayOutputStream.toByteArray()).whenComplete((result, error) -> {
                 writeSemaphore.release();
-                if(request.body() instanceof Node body) {
+                if (request.body() instanceof Node body) {
                     onNodeSent(body);
                 }
 
-                if(error != null) {
-                    if(response) {
+                if (error != null) {
+                    if (response) {
                         request.future().complete(Node.of("error", Map.of("closed", true))); // Prevent NPEs all over the place
                     }
 
@@ -316,7 +318,7 @@ public class SocketHandler implements SocketListener {
                 store.addRequest(request);
             });
             return request.future();
-        }catch (Throwable throwable) {
+        } catch (Throwable throwable) {
             return CompletableFuture.failedFuture(throwable);
         }
     }
@@ -325,7 +327,7 @@ public class SocketHandler implements SocketListener {
     private byte[] encryptRequest(SocketRequest request) {
         var body = request.toBytes();
         var writeKey = keys.writeKey();
-        if(writeKey.isEmpty()) {
+        if (writeKey.isEmpty()) {
             return body;
         }
 
@@ -337,14 +339,13 @@ public class SocketHandler implements SocketListener {
         return switch (encodedBody) {
             case byte[] bytes -> bytes;
             case Node node -> {
-                try(var encoder = new BinaryEncoder()) {
+                try (var encoder = new BinaryEncoder()) {
                     yield encoder.encode(node);
                 } catch (IOException exception) {
                     throw new UncheckedIOException(exception);
                 }
             }
-            case null, default ->
-                    throw new IllegalArgumentException("Cannot create request, illegal body: %s".formatted(encodedBody));
+            case null, default -> throw new IllegalArgumentException("Cannot create request, illegal body: %s".formatted(encodedBody));
         };
     }
 
@@ -353,20 +354,20 @@ public class SocketHandler implements SocketListener {
             return CompletableFuture.completedFuture(null);
         }
 
-        if(loginFuture == null || loginFuture.isDone()) {
+        if (loginFuture == null || loginFuture.isDone()) {
             this.loginFuture = new CompletableFuture<>();
         }
 
         this.session = SocketSession.of(store.proxy().orElse(null), store.clientType() == ClientType.WEB);
         return session.connect(this).exceptionallyAsync(throwable -> {
-            if(state == SocketState.CONNECTED || state == SocketState.RECONNECTING || state == SocketState.PAUSED) {
+            if (state == SocketState.CONNECTED || state == SocketState.RECONNECTING || state == SocketState.PAUSED) {
                 setState(SocketState.PAUSED);
                 onSocketEvent(SocketEvent.PAUSED);
                 handleFailure(Location.RECONNECT, throwable);
                 return null;
             }
 
-            if(loginFuture != null && !loginFuture.isDone()) {
+            if (loginFuture != null && !loginFuture.isDone()) {
                 loginFuture.completeExceptionally(throwable);
             }
 
@@ -633,18 +634,12 @@ public class SocketHandler implements SocketListener {
 
     public CompletableFuture<GroupMetadata> queryGroupMetadata(JidProvider group) {
         var body = Node.of("query", Map.of("request", "interactive"));
-        return sendQuery(group.toJid(), "get", "w:g2", body)
-                .thenApplyAsync(this::handleGroupMetadata);
+        return sendQuery(group.toJid(), "get", "w:g2", body).thenApplyAsync(this::handleGroupMetadata);
     }
 
     protected GroupMetadata handleGroupMetadata(Node response) {
-        var metadata = Optional.of(response)
-                .filter(entry -> entry.hasDescription("group"))
-                .or(() -> response.findNode("group"))
-                .map(this::parseGroupMetadata)
-                .orElseThrow(() -> new NoSuchElementException("Erroneous response: %s".formatted(response)));
-        var chat = store.findChatByJid(metadata.jid())
-                .orElseGet(() -> store().addNewChat(metadata.jid()));
+        var metadata = Optional.of(response).filter(entry -> entry.hasDescription("group")).or(() -> response.findNode("group")).map(this::parseGroupMetadata).orElseThrow(() -> new NoSuchElementException("Erroneous response: %s".formatted(response)));
+        var chat = store.findChatByJid(metadata.jid()).orElseGet(() -> store().addNewChat(metadata.jid()));
         if (chat != null) {
             metadata.foundationTimestamp().ifPresent(timestamp -> chat.setFoundationTimestampSeconds(timestamp.toEpochSecond()));
             metadata.founder().ifPresent(chat::setFounder);
@@ -652,7 +647,6 @@ public class SocketHandler implements SocketListener {
             chat.setName(metadata.subject());
             chat.addParticipants(metadata.participants());
         }
-
         return metadata;
     }
 
@@ -666,14 +660,30 @@ public class SocketHandler implements SocketListener {
         var subjectTimestampSeconds = node.attributes()
                 .getOptionalLong("s_t")
                 .orElse(0L);
+        //@fixme 修复 foundationTimestampSeconds 对应的是 creation
         var foundationTimestampSeconds = node.attributes()
                 .getOptionalLong("creation")
                 .orElse(0L);
         var founder = node.attributes()
                 .getOptionalJid("creator");
         var policies = new HashMap<GroupSetting, ChatSettingPolicy>();
-        policies.put(SEND_MESSAGES, ChatSettingPolicy.of(node.hasNode("restrict")));
-        policies.put(EDIT_GROUP_INFO, ChatSettingPolicy.of(node.hasNode("announce")));
+        //policies.put(SEND_MESSAGES, ChatSettingPolicy.of(node.hasNode("restrict")));
+        //@fixme 修复 EDIT_GROUP_INFO 对应的是 locked
+        policies.put(EDIT_GROUP_INFO, ChatSettingPolicy.of(node.hasNode("locked")));
+        //@fixme 修复 SEND_MESSAGES 对应的是 announcement
+        policies.put(SEND_MESSAGES, ChatSettingPolicy.of(node.hasNode("announcement")));
+        //node.hasNode("member_add_mode")
+        Optional<String> memberAddMode = node.findNode("member_add_mode").map(Node::contentAsString).orElse(null);
+        if (memberAddMode != null && memberAddMode.isPresent()) {
+            String content = memberAddMode.get();
+            if (content.equalsIgnoreCase("admin_add")) {
+                policies.put(ADD_PARTICIPANTS, ChatSettingPolicy.ADMINS);
+            } else {
+                policies.put(ADD_PARTICIPANTS, ChatSettingPolicy.ANYONE);
+            }
+        } else {
+            policies.put(ADD_PARTICIPANTS, ChatSettingPolicy.ANYONE);
+        }
         policies.put(APPROVE_PARTICIPANTS, ChatSettingPolicy.of(node.hasNode("membership_approval_mode")));
         var description = node.findNode("description")
                 .flatMap(parent -> parent.findNode("body"))
@@ -699,7 +709,7 @@ public class SocketHandler implements SocketListener {
     }
 
     private Optional<GroupParticipant> parseGroupParticipant(Node node) {
-        if(node.attributes().hasKey("error")) {
+        if (node.attributes().hasKey("error")) {
             return Optional.empty();
         }
 
@@ -716,7 +726,7 @@ public class SocketHandler implements SocketListener {
         if (messages.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
-        
+
         jid = jid.withAgent(null);
         if (participant != null) {
             participant = participant.withAgent(null);
@@ -728,7 +738,7 @@ public class SocketHandler implements SocketListener {
                 .put("to", jid)
                 .put("type", type, Objects::nonNull);
         if (type == null || Objects.equals(type, "sender")) {
-            if (jid.hasServer(JidServer.WHATSAPP))  {
+            if (jid.hasServer(JidServer.WHATSAPP)) {
                 attributes.put("recipient", jid);
                 attributes.put("to", participant);
             } else if (jid.hasServer(JidServer.GROUP)) {
@@ -806,6 +816,7 @@ public class SocketHandler implements SocketListener {
     }
 
     protected void onNewMessage(ChatMessageInfo info) {
+
         callListenersAsync(listener -> {
             listener.onNewMessage(whatsapp, info);
             listener.onNewMessage(info);
@@ -879,7 +890,7 @@ public class SocketHandler implements SocketListener {
     }
 
     public void callListenersSync(Consumer<Listener> consumer) {
-        for(var listener : store.listeners()) {
+        for (var listener : store.listeners()) {
             invokeListenerSafe(consumer, listener);
         }
     }
@@ -979,7 +990,7 @@ public class SocketHandler implements SocketListener {
             var wasOnline = store().online();
             sendNodeWithNoResponse(Node.of("presence", Map.of("name", oldName, "type", "unavailable")));
             sendNodeWithNoResponse(Node.of("presence", Map.of("name", newName, "type", "available")));
-            if(!wasOnline) {
+            if (!wasOnline) {
                 sendNodeWithNoResponse(Node.of("presence", Map.of("name", oldName, "type", "unavailable")));
             }
             onUserNameChanged(newName, oldName);
